@@ -338,3 +338,30 @@ show "${x}"
 ### expect
 $'a\nb'
 ### end
+
+### quote_escaped_quote_inside_single_quotes
+# The '\'' idiom puts a single quote inside a single-quoted word
+printf '[%s]\n' 'it'\''s one word' 'and'\''this'
+### expect
+[it's one word]
+[and'this]
+### end
+
+### quote_escaped_quote_in_json_argument
+# A JSON argument with an apostrophe stays one argument
+set -- --json '{"words":"i'\''d like that"}'
+echo $#
+printf '%s\n' "$2"
+### expect
+2
+{"words":"i'd like that"}
+### end
+
+### quote_escapes_after_quoted_parts
+# Escaped characters after a quoted part are literal and keep the word whole
+printf '[%s]\n' "a"\$HOME 'b'\ c 'd'\*
+### expect
+[a$HOME]
+[b c]
+[d*]
+### end
