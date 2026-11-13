@@ -1188,6 +1188,29 @@ impl<'a> Lexer<'a> {
                         self.advance();
                     }
                 }
+                Some('\\') => {
+                    // A backslash escapes the next character, so in
+                    // 'it'\''s' the quote it escapes belongs to the word and
+                    // does not open another quoted segment. A backslash before
+                    // a newline joins the lines.
+                    self.advance();
+                    match self.peek_char() {
+                        Some('\n') => {
+                            self.advance();
+                        }
+                        Some(next) => {
+                            let start = content.len();
+                            if next == '$' {
+                                // Literal, as the double-quoted reader keeps it.
+                                content.push('\x00');
+                            }
+                            content.push(next);
+                            self.advance();
+                            flags.quoted_ranges.push((start, content.len()));
+                        }
+                        None => content.push('\\'),
+                    }
+                }
                 Some(ch) if self.is_word_char(ch) => {
                     if matches!(ch, '*' | '?' | '[') {
                         flags.has_unquoted_glob = true;
@@ -2261,6 +2284,34 @@ mod tests {
             lexer.next_token(),
             Some(Token::LiteralWord("x$HOME".to_string()))
         );
+        assert_eq!(lexer.next_token(), None);
+    }
+
+    #[test]
+    fn test_escaped_quote_between_single_quoted_parts_stays_one_word() {
+        let mut lexer = Lexer::new(r#"echo 'it'\''s here' next"#);
+        assert_eq!(lexer.next_token(), Some(Token::Word("echo".to_string())));
+        assert_eq!(
+            lexer.next_token(),
+            Some(Token::LiteralWord("it's here".to_string()))
+        );
+        assert_eq!(lexer.next_token(), Some(Token::Word("next".to_string())));
+        assert_eq!(lexer.next_token(), None);
+    }
+
+    #[test]
+    fn test_escapes_after_a_quoted_part_are_literal() {
+        let mut lexer = Lexer::new("echo \"a\"\\\"b 'c'\\ d 'e'\\\nf");
+        assert_eq!(lexer.next_token(), Some(Token::Word("echo".to_string())));
+        assert_eq!(
+            lexer.next_token(),
+            Some(Token::QuotedWord("a\"b".to_string()))
+        );
+        assert_eq!(
+            lexer.next_token(),
+            Some(Token::LiteralWord("c d".to_string()))
+        );
+        assert_eq!(lexer.next_token(), Some(Token::LiteralWord("ef".to_string())));
         assert_eq!(lexer.next_token(), None);
     }
 
